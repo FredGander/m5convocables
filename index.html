@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convocables — Tableau de bord</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #181b24;
+    --surface2: #1e2230;
+    --border: #2a2f3e;
+    --border-light: #353a4d;
+    --accent: #4f8ef7;
+    --accent-dim: rgba(79,142,247,0.12);
+    --accent-glow: rgba(79,142,247,0.25);
+    --text: #e8eaf0;
+    --text-dim: #8892a4;
+    --text-muted: #545c6e;
+    --green: #34c77b;
+    --amber: #f5a623;
+    --red: #f05454;
+    --row-hover: rgba(79,142,247,0.06);
+    --header-h: 52px;
+    --filter-h: 48px;
+    --row-h: 40px;
+    --col-min: 120px;
+    --radius: 8px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    height: 56px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  .count-pill {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid rgba(79,142,247,0.3);
+    padding: 2px 10px;
+    border-radius: 20px;
+    margin-left: 4px;
+  }
+
+  .spacer { flex: 1; }
+
+  .global-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0 12px;
+    height: 34px;
+    width: 280px;
+    transition: border-color 0.15s;
+  }
+  .global-search:focus-within { border-color: var(--accent); }
+  .global-search svg { color: var(--text-muted); flex-shrink: 0; }
+  .global-search input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    width: 100%;
+  }
+  .global-search input::placeholder { color: var(--text-muted); }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    height: 34px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--border-light); color: var(--text); background: var(--border); }
+  .btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+  /* ── Main layout ── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Table wrapper ── */
+  .table-wrapper {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+
+  .table-container {
+    min-width: max-content;
+  }
+
+  /* ── Column headers ── */
+  .col-headers {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .col-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: var(--header-h);
+    min-width: var(--col-min);
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .col-header:hover { background: var(--surface2); }
+  .col-header.drag-over { background: var(--accent-dim); border-color: var(--accent); }
+  .col-header.dragging { opacity: 0.4; }
+
+  .col-header-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .col-header:hover .col-header-label { color: var(--text); }
+
+  .sort-icon {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.12s;
+    color: var(--text-muted);
+  }
+  .col-header:hover .sort-icon,
+  .col-header.sort-asc .sort-icon,
+  .col-header.sort-desc .sort-icon { opacity: 1; }
+  .col-header.sort-asc .sort-icon,
+  .col-header.sort-desc .sort-icon { color: var(--accent); }
+
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.12s;
+    flex-shrink: 0;
+  }
+  .col-header:hover .drag-handle { opacity: 1; }
+
+  /* ── Filter row ── */
+  .col-filters {
+    display: flex;
+    background: var(--surface2);
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: var(--header-h);
+    z-index: 4;
+  }
+
+  .col-filter {
+    padding: 6px 8px;
+    min-width: var(--col-min);
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    height: var(--filter-h);
+  }
+
+  .col-filter input, .col-filter select {
+    width: 100%;
+    height: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    padding: 0 8px;
+    outline: none;
+    transition: border-color 0.12s;
+  }
+  .col-filter input:focus,
+  .col-filter select:focus { border-color: var(--accent); }
+  .col-filter input::placeholder { color: var(--text-muted); }
+  .col-filter select option { background: var(--surface); }
+
+  /* ── Rows ── */
+  .rows-container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .row {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.08s;
+  }
+  .row:hover { background: var(--row-hover); }
+  .row.even { background: rgba(255,255,255,0.015); }
+  .row.even:hover { background: var(--row-hover); }
+
+  .cell {
+    padding: 0 12px;
+    height: var(--row-h);
+    min-width: var(--col-min);
+    flex-shrink: 0;
+    border-right: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .badge-oui { background: rgba(52,199,123,0.15); color: var(--green); }
+  .badge-non { background: rgba(84,92,110,0.2); color: var(--text-muted); }
+  .badge-sis { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-sia { background: rgba(245,166,35,0.15); color: var(--amber); }
+  .badge-h { background: rgba(79,142,247,0.1); color: #7ab3ff; }
+  .badge-f { background: rgba(240,84,84,0.1); color: #f08888; }
+
+  /* ── Status bar ── */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 0 20px;
+    height: 38px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-value {
+    font-family: 'DM Mono', monospace;
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  /* ── Loader ── */
+  .loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex: 1;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Column visibility panel ── */
+  .col-panel {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    width: 260px;
+    max-height: calc(100vh - 56px - 38px);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+  }
+  .col-panel.open { display: flex; }
+  .col-panel-header {
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .col-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.1s;
+  }
+  .col-toggle-item:hover { background: var(--surface2); }
+  .toggle {
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--border);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.15s;
+  }
+  .toggle.on::after { transform: translateX(12px); }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .pg-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .pg-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border); }
+  .pg-btn.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(79,142,247,0.4); font-weight: 600; }
+  .pg-btn:disabled { opacity: 0.3; cursor: default; }
+  .pg-btn:disabled:hover { background: transparent; border-color: transparent; color: var(--text-dim); }
+  .pg-ellipsis { color: var(--text-muted); font-size: 12px; padding: 0 4px; }
+  .pg-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 0 8px;
+    white-space: nowrap;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  .active-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(79,142,247,0.3);
+    color: var(--accent);
+    font-size: 11px;
+    padding: 2px 8px 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .filter-chip:hover { background: rgba(79,142,247,0.2); }
+
+  .clear-btn {
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .clear-btn:hover { color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Convocables
+    <span class="count-pill" id="totalCount">—</span>
+  </div>
+
+  <div class="active-filters" id="activeFilters"></div>
+
+  <div class="spacer"></div>
+
+  <div class="global-search">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="7" cy="7" r="5"/><path d="m11 11 3 3"/>
+    </svg>
+    <input type="text" id="globalSearch" placeholder="Recherche globale…">
+  </div>
+
+  <button class="btn" id="colsBtn" onclick="toggleColPanel()">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+      <rect x="1" y="3" width="4" height="10" rx="1"/><rect x="6" y="3" width="4" height="10" rx="1"/><rect x="11" y="3" width="4" height="10" rx="1"/>
+    </svg>
+    Colonnes
+  </button>
+
+  <button class="btn" onclick="resetAll()">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M3 8a5 5 0 1 0 1-3M3 2v4h4"/>
+    </svg>
+    Réinitialiser
+  </button>
+</div>
+
+<!-- Column visibility panel -->
+<div class="col-panel" id="colPanel">
+  <div class="col-panel-header">
+    Colonnes visibles
+    <span style="cursor:pointer;color:var(--text-muted)" onclick="toggleColPanel()">✕</span>
+  </div>
+  <div id="colToggles"></div>
+</div>
+
+<!-- Main -->
+<div class="main" id="main">
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    Chargement des données…
+  </div>
+
+  <div class="table-wrapper" id="tableWrapper" style="display:none">
+    <div class="table-container" id="tableContainer">
+      <!-- col headers -->
+      <div class="col-headers" id="colHeaders"></div>
+      <!-- filter row -->
+      <div class="col-filters" id="colFilters"></div>
+      <!-- rows -->
+      <div class="rows-container" id="rowsContainer">
+        <div id="visibleRows"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="statusbar">
+  <div class="status-item">
+    <span class="status-value" id="statusFiltered">—</span>
+    résultats sur
+    <span class="status-value" id="statusTotal">—</span>
+  </div>
+  <div class="status-item" id="statusSort"></div>
+  <div class="spacer"></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// Config
+// ══════════════════════════════════════════════
+const PAGE_SIZE = 20;
+
+// ══════════════════════════════════════════════
+// Config
+// ══════════════════════════════════════════════
+const COL_LABELS = {
+  matricule_pa: 'Matricule',
+  nom_naissance_pa: 'Nom naissance',
+  nom_usage_pa: 'Nom usage',
+  prenom_pa: 'Prénom',
+  sexe_pa: 'Sexe',
+  dt_naissance_pa: 'Date naissance',
+  age_calc: 'Âge',
+  mi_carriere_calc: 'Mi-carrière',
+  est_apprenti_cn: 'Apprenti',
+  est_stagiaire_cn: 'Stagiaire',
+  est_saisonnier_cn: 'Saisonnier',
+  est_enceinte_calc: 'Enceinte',
+  est_pension_invalidite_calc: 'Pension inv.',
+  est_mineur_calc: 'Mineur',
+  est_travailleur_handicape_calc: 'Trav. hand.',
+  suivi_calc: 'Suivi',
+  ancien_suivi_calc: 'Anc. suivi',
+  demandeur_calc: 'Demandeur',
+  code_ad: 'Code adhérent',
+  nom_ad: 'Nom adhérent',
+  dt_entree_sa: 'Date entrée',
+  date_declaration: 'Date décl.',
+  dt_pro_visite_sa: 'Proch. visite',
+  lib_pro_visite: 'Type visite',
+  periodicite_pro_visite_calc: 'Périodicité',
+};
+
+const BOOL_COLS = new Set(['mi_carriere_calc','est_apprenti_cn','est_stagiaire_cn','est_saisonnier_cn','est_enceinte_calc','est_pension_invalidite_calc','est_mineur_calc','est_travailleur_handicape_calc']);
+const DATE_COLS = new Set(['dt_naissance_pa','dt_entree_sa','date_declaration','dt_pro_visite_sa']);
+const COL_WIDTHS = {
+  matricule_pa: 100, nom_naissance_pa: 130, nom_usage_pa: 120, prenom_pa: 110,
+  sexe_pa: 80, dt_naissance_pa: 120, age_calc: 70, mi_carriere_calc: 90,
+  est_apprenti_cn: 85, est_stagiaire_cn: 85, est_saisonnier_cn: 90,
+  est_enceinte_calc: 85, est_pension_invalidite_calc: 100, est_mineur_calc: 75,
+  est_travailleur_handicape_calc: 110, suivi_calc: 75, ancien_suivi_calc: 95,
+  demandeur_calc: 100, code_ad: 105, nom_ad: 220, dt_entree_sa: 110,
+  date_declaration: 105, dt_pro_visite_sa: 115, lib_pro_visite: 260,
+  periodicite_pro_visite_calc: 100,
+};
+
+// ══════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════
+let allRows = [];
+let filteredRows = [];
+let columns = [];
+let visibleCols = {};
+let colFilters = {};
+let globalFilter = '';
+let sortCol = null;
+let sortDir = 1;
+let dragSrc = null;
+let currentPage = 1;
+
+// ══════════════════════════════════════════════
+// Load CSV
+// ══════════════════════════════════════════════
+const DATA_URL = 'data.csv';
+
+Papa.parse(DATA_URL, {
+  download: true,
+  header: true,
+  skipEmptyLines: true,
+  complete(res) {
+    allRows = res.data;
+    columns = res.meta.fields;
+    visibleCols = Object.fromEntries(columns.map(c => [c, true]));
+    colFilters = Object.fromEntries(columns.map(c => [c, '']));
+
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('tableWrapper').style.display = '';
+    document.getElementById('totalCount').textContent = allRows.length.toLocaleString('fr-FR');
+
+    buildColPanel();
+    buildHeaders();
+    buildFilterRow();
+    applyFilters();
+  },
+  error(e) {
+    document.getElementById('loader').innerHTML = `<span style="color:var(--red)">Erreur de chargement : ${e}</span>`;
+  }
+});
+
+// ══════════════════════════════════════════════
+// Build UI
+// ══════════════════════════════════════════════
+function visibleColumns() {
+  return columns.filter(c => visibleCols[c]);
+}
+
+function buildHeaders() {
+  const container = document.getElementById('colHeaders');
+  container.innerHTML = '';
+  for (const col of visibleColumns()) {
+    const w = COL_WIDTHS[col] || 140;
+    const div = document.createElement('div');
+    div.className = 'col-header' + (sortCol === col ? (sortDir > 0 ? ' sort-asc' : ' sort-desc') : '');
+    div.style.minWidth = w + 'px';
+    div.style.width = w + 'px';
+    div.dataset.col = col;
+    div.draggable = true;
+
+    div.innerHTML = `
+      <svg class="drag-handle" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+        <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
+        <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
+        <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
+      </svg>
+      <span class="col-header-label" title="${col}">${COL_LABELS[col] || col}</span>
+      <svg class="sort-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8">
+        ${sortCol === col && sortDir > 0
+          ? '<path d="M6 9V3M3 6l3-3 3 3"/>'
+          : sortCol === col && sortDir < 0
+          ? '<path d="M6 3v6M3 6l3 3 3-3"/>'
+          : '<path d="M6 3v6M4 5l2-2 2 2M4 7l2 2 2-2"/>'}
+      </svg>`;
+
+    div.addEventListener('click', e => { if (!e.target.closest('.drag-handle')) toggleSort(col); });
+    div.addEventListener('dragstart', e => { dragSrc = col; div.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    div.addEventListener('dragend', () => { div.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); });
+    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+    div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
+    div.addEventListener('drop', e => { e.preventDefault(); if (dragSrc && dragSrc !== col) reorderCol(dragSrc, col); });
+
+    container.appendChild(div);
+  }
+}
+
+function buildFilterRow() {
+  const container = document.getElementById('colFilters');
+  container.innerHTML = '';
+  for (const col of visibleColumns()) {
+    const w = COL_WIDTHS[col] || 140;
+    const div = document.createElement('div');
+    div.className = 'col-filter';
+    div.style.minWidth = w + 'px';
+    div.style.width = w + 'px';
+
+    if (BOOL_COLS.has(col)) {
+      const sel = document.createElement('select');
+      sel.innerHTML = `<option value="">Tous</option><option value="Oui">Oui</option><option value="Non">Non</option>`;
+      sel.value = colFilters[col] || '';
+      sel.addEventListener('change', () => { colFilters[col] = sel.value; applyFilters(); });
+      div.appendChild(sel);
+    } else if (col === 'sexe_pa') {
+      const sel = document.createElement('select');
+      sel.innerHTML = `<option value="">Tous</option><option value="Homme">Homme</option><option value="Femme">Femme</option>`;
+      sel.value = colFilters[col] || '';
+      sel.addEventListener('change', () => { colFilters[col] = sel.value; applyFilters(); });
+      div.appendChild(sel);
+    } else if (col === 'suivi_calc' || col === 'ancien_suivi_calc') {
+      const sel = document.createElement('select');
+      sel.innerHTML = `<option value="">Tous</option><option value="SIS">SIS</option><option value="SIA">SIA</option>`;
+      sel.value = colFilters[col] || '';
+      sel.addEventListener('change', () => { colFilters[col] = sel.value; applyFilters(); });
+      div.appendChild(sel);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = '…';
+      inp.value = colFilters[col] || '';
+      inp.addEventListener('input', () => { colFilters[col] = inp.value; applyFiltersDebounced(); });
+      div.appendChild(inp);
+    }
+
+    container.appendChild(div);
+  }
+}
+
+function buildColPanel() {
+  const container = document.getElementById('colToggles');
+  container.innerHTML = '';
+  for (const col of columns) {
+    const div = document.createElement('div');
+    div.className = 'col-toggle-item';
+    div.innerHTML = `
+      <div class="toggle ${visibleCols[col] ? 'on' : ''}" id="toggle-${col}"></div>
+      <span>${COL_LABELS[col] || col}</span>`;
+    div.addEventListener('click', () => toggleColVisibility(col));
+    container.appendChild(div);
+  }
+}
+
+function toggleColPanel() {
+  const panel = document.getElementById('colPanel');
+  const btn = document.getElementById('colsBtn');
+  panel.classList.toggle('open');
+  btn.classList.toggle('active');
+}
+
+function toggleColVisibility(col) {
+  visibleCols[col] = !visibleCols[col];
+  const tog = document.getElementById(`toggle-${col}`);
+  if (tog) tog.classList.toggle('on', visibleCols[col]);
+  buildHeaders();
+  buildFilterRow();
+  renderPage();
+}
+
+// ══════════════════════════════════════════════
+// Filter & sort
+// ══════════════════════════════════════════════
+let filterTimer = null;
+function applyFiltersDebounced() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(applyFilters, 200);
+}
+
+function applyFilters() {
+  const g = globalFilter.toLowerCase().trim();
+  const activeCols = Object.entries(colFilters).filter(([,v]) => v).map(([k,v]) => [k, v.toLowerCase()]);
+
+  filteredRows = allRows.filter(row => {
+    for (const [col, val] of activeCols) {
+      const cell = String(row[col] || '').toLowerCase();
+      if (!cell.includes(val)) return false;
+    }
+    if (g) {
+      const found = Object.values(row).some(v => String(v || '').toLowerCase().includes(g));
+      if (!found) return false;
+    }
+    return true;
+  });
+
+  if (sortCol) {
+    filteredRows.sort((a, b) => {
+      const av = a[sortCol] || '';
+      const bv = b[sortCol] || '';
+      return av < bv ? -sortDir : av > bv ? sortDir : 0;
+    });
+  }
+
+  currentPage = 1;
+  document.getElementById('tableWrapper').scrollTop = 0;
+  document.getElementById('statusFiltered').textContent = filteredRows.length.toLocaleString('fr-FR');
+  document.getElementById('statusTotal').textContent = allRows.length.toLocaleString('fr-FR');
+
+  updateActiveFilters();
+  renderPage();
+}
+
+function toggleSort(col) {
+  if (sortCol === col) {
+    sortDir = sortDir > 0 ? -1 : 1;
+  } else {
+    sortCol = col;
+    sortDir = 1;
+  }
+  document.getElementById('statusSort').textContent = `Trié par ${COL_LABELS[sortCol] || sortCol} ${sortDir > 0 ? '↑' : '↓'}`;
+  buildHeaders();
+  applyFilters();
+}
+
+function reorderCol(src, dest) {
+  const si = columns.indexOf(src);
+  const di = columns.indexOf(dest);
+  columns.splice(si, 1);
+  columns.splice(di, 0, src);
+  buildHeaders();
+  buildFilterRow();
+  renderPage();
+}
+
+function updateActiveFilters() {
+  const container = document.getElementById('activeFilters');
+  const active = Object.entries(colFilters).filter(([,v]) => v);
+  if (globalFilter) active.push(['__global__', globalFilter]);
+
+  if (!active.length) { container.innerHTML = ''; return; }
+
+  container.innerHTML = active.slice(0, 5).map(([col, val]) => `
+    <div class="filter-chip" onclick="clearFilter('${col}')">
+      ${col === '__global__' ? '🔍' : (COL_LABELS[col] || col)}: <strong>${escHtml(val)}</strong> ✕
+    </div>
+  `).join('') + `<span class="clear-btn" onclick="resetFilters()">Tout effacer</span>`;
+}
+
+function clearFilter(col) {
+  if (col === '__global__') {
+    globalFilter = '';
+    document.getElementById('globalSearch').value = '';
+  } else {
+    colFilters[col] = '';
+    buildFilterRow();
+  }
+  applyFilters();
+}
+
+function resetFilters() {
+  colFilters = Object.fromEntries(columns.map(c => [c, '']));
+  globalFilter = '';
+  document.getElementById('globalSearch').value = '';
+  buildFilterRow();
+  applyFilters();
+}
+
+function resetAll() {
+  columns = Object.keys(COL_LABELS).filter(c => allRows[0] && c in allRows[0]);
+  visibleCols = Object.fromEntries(columns.map(c => [c, true]));
+  colFilters = Object.fromEntries(columns.map(c => [c, '']));
+  globalFilter = '';
+  sortCol = null;
+  sortDir = 1;
+  document.getElementById('globalSearch').value = '';
+  document.getElementById('statusSort').textContent = '';
+  buildHeaders();
+  buildFilterRow();
+  buildColPanel();
+  applyFilters();
+}
+
+// ══════════════════════════════════════════════
+// Pagination
+// ══════════════════════════════════════════════
+function totalPages() {
+  return Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+}
+
+function goToPage(p) {
+  currentPage = Math.max(1, Math.min(p, totalPages()));
+  document.getElementById('tableWrapper').scrollTop = 0;
+  renderPage();
+}
+
+function renderPage() {
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filteredRows.slice(start, start + PAGE_SIZE);
+  const cols = visibleColumns();
+
+  const fragment = document.createDocumentFragment();
+  pageRows.forEach((row, i) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'row' + (i % 2 !== 0 ? ' even' : '');
+    for (const col of cols) {
+      const w = COL_WIDTHS[col] || 140;
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.style.minWidth = w + 'px';
+      cell.style.width = w + 'px';
+      const val = row[col] || '';
+      cell.innerHTML = formatCell(col, val);
+      cell.title = val;
+      rowEl.appendChild(cell);
+    }
+    fragment.appendChild(rowEl);
+  });
+
+  const container = document.getElementById('visibleRows');
+  container.innerHTML = '';
+  container.appendChild(fragment);
+
+  renderPagination();
+}
+
+function renderPagination() {
+  const total = totalPages();
+  const cur = currentPage;
+  const container = document.getElementById('pagination');
+
+  if (total <= 1) { container.innerHTML = ''; return; }
+
+  let html = '';
+
+  // Info
+  const from = ((cur - 1) * PAGE_SIZE + 1).toLocaleString('fr-FR');
+  const to = Math.min(cur * PAGE_SIZE, filteredRows.length).toLocaleString('fr-FR');
+  html += `<span class="pg-info">${from}–${to}</span>`;
+
+  // Prev
+  html += `<button class="pg-btn" onclick="goToPage(${cur - 1})" ${cur === 1 ? 'disabled' : ''}>‹</button>`;
+
+  // Page numbers with ellipsis
+  const pages = getPageNumbers(cur, total);
+  let lastPg = null;
+  for (const pg of pages) {
+    if (pg === '…') {
+      html += `<span class="pg-ellipsis">…</span>`;
+    } else {
+      html += `<button class="pg-btn ${pg === cur ? 'active' : ''}" onclick="goToPage(${pg})">${pg}</button>`;
+    }
+    lastPg = pg;
+  }
+
+  // Next
+  html += `<button class="pg-btn" onclick="goToPage(${cur + 1})" ${cur === total ? 'disabled' : ''}>›</button>`;
+
+  container.innerHTML = html;
+}
+
+function getPageNumbers(cur, total) {
+  // Show: 1 … cur-1 cur cur+1 … total
+  const pages = [];
+  const delta = 1; // pages around current
+
+  const range = new Set();
+  range.add(1);
+  range.add(total);
+  for (let i = cur - delta; i <= cur + delta; i++) {
+    if (i >= 1 && i <= total) range.add(i);
+  }
+
+  const sorted = [...range].sort((a, b) => a - b);
+  let prev = null;
+  for (const p of sorted) {
+    if (prev !== null && p - prev > 1) pages.push('…');
+    pages.push(p);
+    prev = p;
+  }
+  return pages;
+}
+
+function formatCell(col, val) {
+  if (!val) return `<span style="color:var(--text-muted)">—</span>`;
+  if (BOOL_COLS.has(col)) {
+    return val === 'Oui'
+      ? `<span class="badge badge-oui">Oui</span>`
+      : `<span class="badge badge-non">Non</span>`;
+  }
+  if (col === 'sexe_pa') {
+    return val === 'Homme'
+      ? `<span class="badge badge-h">♂ Homme</span>`
+      : `<span class="badge badge-f">♀ Femme</span>`;
+  }
+  if (col === 'suivi_calc' || col === 'ancien_suivi_calc') {
+    return val === 'SIS'
+      ? `<span class="badge badge-sis">SIS</span>`
+      : `<span class="badge badge-sia">SIA</span>`;
+  }
+  if (col === 'age_calc') {
+    return `<span style="font-family:'DM Mono',monospace;font-size:12px">${val}</span>`;
+  }
+  if (DATE_COLS.has(col)) {
+    return `<span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text-dim)">${val}</span>`;
+  }
+  if (col === 'matricule_pa' || col === 'code_ad') {
+    return `<span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">${val}</span>`;
+  }
+  return `<span style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${escHtml(val)}</span>`;
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════
+// Global search
+// ══════════════════════════════════════════════
+document.getElementById('globalSearch').addEventListener('input', e => {
+  globalFilter = e.target.value;
+  applyFiltersDebounced();
+});
+
+// ══════════════════════════════════════════════
+// Close col panel on outside click
+// ══════════════════════════════════════════════
+document.addEventListener('click', e => {
+  if (!e.target.closest('#colPanel') && !e.target.closest('#colsBtn')) {
+    document.getElementById('colPanel').classList.remove('open');
+    document.getElementById('colsBtn').classList.remove('active');
+  }
+});
+</script>
+</body>
+</html>
