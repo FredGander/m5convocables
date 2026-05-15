@@ -141,7 +141,8 @@
   }
 
   .table-container {
-    min-width: max-content;
+    min-width: 100%;
+    width: 100%;
   }
 
   /* ── Column headers ── */
@@ -152,6 +153,7 @@
     position: sticky;
     top: 0;
     z-index: 5;
+    width: 100%;
   }
 
   .col-header {
@@ -650,7 +652,7 @@ Papa.parse(DATA_URL, {
     allRows.forEach(r => { r['priorite'] = computePriority(r); });
 
     // Insert priorite as first column
-    columns = ['priorite', ...res.meta.fields];
+    columns = [...res.meta.fields, 'priorite'];
     visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
     colFilters = Object.fromEntries(columns.map(c => [c, '']));
 
@@ -671,7 +673,15 @@ Papa.parse(DATA_URL, {
 // ══════════════════════════════════════════════
 // Build UI
 // ══════════════════════════════════════════════
-function visibleColumns() {
+function getColStyle(col, cols) {
+  const w = COL_WIDTHS[col] || 140;
+  const isLast = cols[cols.length - 1] === col;
+  return isLast
+    ? `min-width:${w}px;flex:1;`
+    : `min-width:${w}px;width:${w}px;flex-shrink:0;`;
+}
+
+
   return columns.filter(c => visibleCols[c]);
 }
 
@@ -679,11 +689,11 @@ function buildHeaders() {
   const container = document.getElementById('colHeaders');
   container.innerHTML = '';
   for (const col of visibleColumns()) {
-    const w = COL_WIDTHS[col] || 140;
+    const cols = visibleColumns();
+    const style = getColStyle(col, cols);
     const div = document.createElement('div');
     div.className = 'col-header' + (sortCol === col ? (sortDir > 0 ? ' sort-asc' : ' sort-desc') : '');
-    div.style.minWidth = w + 'px';
-    div.style.width = w + 'px';
+    div.style.cssText = style;
     div.dataset.col = col;
     div.draggable = true;
 
@@ -722,11 +732,11 @@ function buildFilterRow() {
   const container = document.getElementById('colFilters');
   container.innerHTML = '';
   for (const col of visibleColumns()) {
-    const w = COL_WIDTHS[col] || 140;
+    const cols = visibleColumns();
+    const style = getColStyle(col, cols);
     const div = document.createElement('div');
     div.className = 'col-filter';
-    div.style.minWidth = w + 'px';
-    div.style.width = w + 'px';
+    div.style.cssText = style;
 
     if (col === 'priorite') {
       const sel = document.createElement('select');
@@ -893,7 +903,7 @@ function resetFilters() {
 }
 
 function resetAll() {
-  columns = ['priorite', ...Object.keys(COL_LABELS).filter(c => c !== 'priorite' && allRows[0] && c in allRows[0])];
+  columns = [...Object.keys(COL_LABELS).filter(c => c !== 'priorite' && allRows[0] && c in allRows[0]), 'priorite'];
   const DEFAULT_COLS = new Set(['priorite','nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
   visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
   colFilters = Object.fromEntries(columns.map(c => [c, '']));
@@ -931,11 +941,10 @@ function renderPage() {
     const rowEl = document.createElement('div');
     rowEl.className = 'row' + (i % 2 !== 0 ? ' even' : '');
     for (const col of cols) {
-      const w = COL_WIDTHS[col] || 140;
+      const style = getColStyle(col, cols);
       const cell = document.createElement('div');
       cell.className = 'cell';
-      cell.style.minWidth = w + 'px';
-      cell.style.width = w + 'px';
+      cell.style.cssText = style;
       const val = row[col] || '';
       cell.innerHTML = formatCell(col, val);
       cell.title = val;
@@ -1078,7 +1087,7 @@ function computePriority(row) {
   // Suivi SIA
   if (suivi === 'SIA') return 'Niv 1';
   // Suivi SIR (présent dans lib_pro_visite)
-  if (libVisite.includes(' sir ') || libVisite.endsWith(' sir') || libVisite.includes('sir ') || libVisite.startsWith('sir')) return 'Niv 1';
+  if (libVisite.includes('sir')) return 'Niv 1';
   // Visite à la demande du médecin du travail
   if (libVisite.includes('demande') && (libVisite.includes('médecin') || libVisite.includes('medecin'))) return 'Niv 1';
 
@@ -1090,7 +1099,7 @@ function computePriority(row) {
   if (row['est_enceinte_calc'] === 'Oui') return 'Niv 2';
   if (row['est_pension_invalidite_calc'] === 'Oui') return 'Niv 2';
   if (row['est_travailleur_handicape_calc'] === 'Oui') return 'Niv 2';
-  // Ancien suivi SIS passé en SIA (changement de suivi)
+  // Ancien suivi SIS passé en SIA
   if (ancienSuivi === 'SIS' && suivi === 'SIA') return 'Niv 2';
 
   // ── Niv 3 ──────────────────────────────────
@@ -1132,26 +1141,9 @@ function startResize(e, col, headerEl) {
   function onMove(ev) {
     const newW = Math.max(60, startW + ev.clientX - startX);
     COL_WIDTHS[col] = newW;
-    // Update all cells in this column live
-    document.querySelectorAll(`[data-col="${col}"]`).forEach(el => {
-      el.style.minWidth = newW + 'px';
-      el.style.width = newW + 'px';
-    });
-    // Update filter cell
-    const filters = document.getElementById('colFilters').children;
-    const visIdx = visibleColumns().indexOf(col);
-    if (visIdx >= 0 && filters[visIdx]) {
-      filters[visIdx].style.minWidth = newW + 'px';
-      filters[visIdx].style.width = newW + 'px';
-    }
-    // Update data cells
-    document.querySelectorAll('.cell').forEach((cell, i) => {
-      const colIdx = i % visibleColumns().length;
-      if (visibleColumns()[colIdx] === col) {
-        cell.style.minWidth = newW + 'px';
-        cell.style.width = newW + 'px';
-      }
-    });
+    renderPage();
+    buildHeaders();
+    buildFilterRow();
   }
 
   function onUp() {
