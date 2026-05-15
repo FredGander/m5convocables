@@ -197,7 +197,21 @@
   .col-header.sort-asc .sort-icon,
   .col-header.sort-desc .sort-icon { color: var(--accent); }
 
-  .drag-handle {
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 2;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .resize-handle:hover,
+  .resize-handle.resizing { background: var(--accent); }
+
+  .col-header { position: relative; }
     cursor: grab;
     color: var(--text-muted);
     opacity: 0;
@@ -556,7 +570,7 @@ const PAGE_SIZE = 20;
 // ══════════════════════════════════════════════
 const COL_LABELS = {
   matricule_pa: 'Matricule',
-  nom_naissance_pa: 'Nom naissance',
+  nom_naissance_pa: 'NOM',
   nom_usage_pa: 'Nom usage',
   prenom_pa: 'Prénom',
   sexe_pa: 'Sexe',
@@ -574,8 +588,8 @@ const COL_LABELS = {
   ancien_suivi_calc: 'Anc. suivi',
   demandeur_calc: 'Demandeur',
   code_ad: 'Code adhérent',
-  nom_ad: 'Nom adhérent',
-  dt_entree_sa: 'Date entrée',
+  nom_ad: 'ADHÉRENT',
+  dt_entree_sa: 'ENTRÉE',
   date_declaration: 'Date décl.',
   dt_pro_visite_sa: 'Proch. visite',
   lib_pro_visite: 'Type visite',
@@ -671,14 +685,19 @@ function buildHeaders() {
           : sortCol === col && sortDir < 0
           ? '<path d="M6 3v6M3 6l3 3 3-3"/>'
           : '<path d="M6 3v6M4 5l2-2 2 2M4 7l2 2 2-2"/>'}
-      </svg>`;
+      </svg>
+      <div class="resize-handle" data-col="${col}"></div>`;
 
-    div.addEventListener('click', e => { if (!e.target.closest('.drag-handle')) toggleSort(col); });
-    div.addEventListener('dragstart', e => { dragSrc = col; div.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    div.addEventListener('click', e => { if (!e.target.closest('.drag-handle') && !e.target.closest('.resize-handle')) toggleSort(col); });
+    div.addEventListener('dragstart', e => { if (e.target.closest('.resize-handle')) { e.preventDefault(); return; } dragSrc = col; div.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
     div.addEventListener('dragend', () => { div.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); });
     div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
     div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
     div.addEventListener('drop', e => { e.preventDefault(); if (dragSrc && dragSrc !== col) reorderCol(dragSrc, col); });
+
+    // Resize
+    const handle = div.querySelector('.resize-handle');
+    handle.addEventListener('mousedown', e => startResize(e, col, div));
 
     container.appendChild(div);
   }
@@ -986,7 +1005,8 @@ function formatCell(col, val) {
       : `<span class="badge badge-sia">SIA</span>`;
   }
   if (col === 'age_calc') {
-    return `<span style="font-family:'DM Mono',monospace;font-size:12px">${val}</span>`;
+    const age = val.toString().replace(/\.0$/, '');
+    return `<span style="font-family:'DM Mono',monospace;font-size:12px">${age}</span>`;
   }
   if (DATE_COLS.has(col)) {
     return `<span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text-dim)">${val}</span>`;
@@ -999,6 +1019,58 @@ function formatCell(col, val) {
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════
+// Column resize
+// ══════════════════════════════════════════════
+function startResize(e, col, headerEl) {
+  e.preventDefault();
+  e.stopPropagation();
+  const handle = headerEl.querySelector('.resize-handle');
+  handle.classList.add('resizing');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  const startX = e.clientX;
+  const startW = COL_WIDTHS[col] || 140;
+
+  function onMove(ev) {
+    const newW = Math.max(60, startW + ev.clientX - startX);
+    COL_WIDTHS[col] = newW;
+    // Update all cells in this column live
+    document.querySelectorAll(`[data-col="${col}"]`).forEach(el => {
+      el.style.minWidth = newW + 'px';
+      el.style.width = newW + 'px';
+    });
+    // Update filter cell
+    const filters = document.getElementById('colFilters').children;
+    const visIdx = visibleColumns().indexOf(col);
+    if (visIdx >= 0 && filters[visIdx]) {
+      filters[visIdx].style.minWidth = newW + 'px';
+      filters[visIdx].style.width = newW + 'px';
+    }
+    // Update data cells
+    document.querySelectorAll('.cell').forEach((cell, i) => {
+      const colIdx = i % visibleColumns().length;
+      if (visibleColumns()[colIdx] === col) {
+        cell.style.minWidth = newW + 'px';
+        cell.style.width = newW + 'px';
+      }
+    });
+  }
+
+  function onUp() {
+    handle.classList.remove('resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    renderPage();
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 // ══════════════════════════════════════════════
