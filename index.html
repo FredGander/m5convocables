@@ -443,6 +443,13 @@
     white-space: nowrap;
   }
 
+  .badge-p1 { background: rgba(240,84,84,0.18); color: #f05454; border: 1px solid rgba(240,84,84,0.3); }
+  .badge-p2 { background: rgba(245,166,35,0.18); color: #f5a623; border: 1px solid rgba(245,166,35,0.3); }
+  .badge-p3 { background: rgba(245,214,35,0.18); color: #d4b800; border: 1px solid rgba(245,214,35,0.3); }
+  .badge-p4 { background: rgba(79,142,247,0.18); color: #4f8ef7; border: 1px solid rgba(79,142,247,0.3); }
+  .badge-p5 { background: rgba(159,122,234,0.18); color: #9f7aea; border: 1px solid rgba(159,122,234,0.3); }
+  .badge-p6 { background: rgba(52,199,123,0.18); color: #34c77b; border: 1px solid rgba(52,199,123,0.3); }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -569,6 +576,7 @@ const PAGE_SIZE = 20;
 // Config
 // ══════════════════════════════════════════════
 const COL_LABELS = {
+  priorite: 'PRIORITÉ',
   matricule_pa: 'Matricule',
   nom_naissance_pa: 'NOM',
   nom_usage_pa: 'Nom usage',
@@ -599,6 +607,7 @@ const COL_LABELS = {
 const BOOL_COLS = new Set(['mi_carriere_calc','est_apprenti_cn','est_stagiaire_cn','est_saisonnier_cn','est_enceinte_calc','est_pension_invalidite_calc','est_mineur_calc','est_travailleur_handicape_calc']);
 const DATE_COLS = new Set(['dt_naissance_pa','dt_entree_sa','date_declaration','dt_pro_visite_sa']);
 const COL_WIDTHS = {
+  priorite: 90,
   matricule_pa: 100, nom_naissance_pa: 130, nom_usage_pa: 120, prenom_pa: 110,
   sexe_pa: 80, dt_naissance_pa: 120, age_calc: 70, mi_carriere_calc: 90,
   est_apprenti_cn: 85, est_stagiaire_cn: 85, est_saisonnier_cn: 90,
@@ -635,7 +644,13 @@ Papa.parse(DATA_URL, {
   complete(res) {
     allRows = res.data;
     columns = res.meta.fields;
-    const DEFAULT_COLS = new Set(['nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
+    const DEFAULT_COLS = new Set(['priorite','nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
+
+    // Compute priority for each row
+    allRows.forEach(r => { r['priorite'] = computePriority(r); });
+
+    // Insert priorite as first column
+    columns = ['priorite', ...res.meta.fields];
     visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
     colFilters = Object.fromEntries(columns.map(c => [c, '']));
 
@@ -713,7 +728,13 @@ function buildFilterRow() {
     div.style.minWidth = w + 'px';
     div.style.width = w + 'px';
 
-    if (BOOL_COLS.has(col)) {
+    if (col === 'priorite') {
+      const sel = document.createElement('select');
+      sel.innerHTML = `<option value="">Tous</option><option>Niv 1</option><option>Niv 2</option><option>Niv 3</option><option>Niv 4</option><option>Niv 5</option><option>Niv 6</option>`;
+      sel.value = colFilters[col] || '';
+      sel.addEventListener('change', () => { colFilters[col] = sel.value; applyFilters(); });
+      div.appendChild(sel);
+    } else if (BOOL_COLS.has(col)) {
       const sel = document.createElement('select');
       sel.innerHTML = `<option value="">Tous</option><option value="Oui">Oui</option><option value="Non">Non</option>`;
       sel.value = colFilters[col] || '';
@@ -872,8 +893,8 @@ function resetFilters() {
 }
 
 function resetAll() {
-  columns = Object.keys(COL_LABELS).filter(c => allRows[0] && c in allRows[0]);
-  const DEFAULT_COLS = new Set(['nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
+  columns = ['priorite', ...Object.keys(COL_LABELS).filter(c => c !== 'priorite' && allRows[0] && c in allRows[0])];
+  const DEFAULT_COLS = new Set(['priorite','nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
   visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
   colFilters = Object.fromEntries(columns.map(c => [c, '']));
   globalFilter = '';
@@ -989,6 +1010,13 @@ function getPageNumbers(cur, total) {
 
 function formatCell(col, val) {
   if (!val) return `<span style="color:var(--text-muted)">—</span>`;
+  if (col === 'priorite') {
+    const map = { 'Niv 1': 'p1', 'Niv 2': 'p2', 'Niv 3': 'p3', 'Niv 4': 'p4', 'Niv 5': 'p5', 'Niv 6': 'p6' };
+    const cls = map[val];
+    return cls
+      ? `<span class="badge badge-${cls}" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600">${val}</span>`
+      : `<span style="color:var(--text-muted)">—</span>`;
+  }
   if (BOOL_COLS.has(col)) {
     return val === 'Oui'
       ? `<span class="badge badge-oui">Oui</span>`
@@ -1019,6 +1047,72 @@ function formatCell(col, val) {
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════
+// Priority computation
+// ══════════════════════════════════════════════
+function computePriority(row) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function parseDate(str) {
+    if (!str || str.trim() === '') return null;
+    const parts = str.split('/');
+    if (parts.length !== 3) return null;
+    const [d, m, y] = parts;
+    const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
+  const entree         = parseDate(row['dt_entree_sa']);
+  const prochaineVisite = parseDate(row['dt_pro_visite_sa']);
+  const suivi          = (row['suivi_calc'] || '').trim();
+  const ancienSuivi    = (row['ancien_suivi_calc'] || '').trim();
+  const libVisite      = (row['lib_pro_visite'] || '').toLowerCase();
+  const age            = parseFloat(row['age_calc']) || 0;
+
+  // ── Niv 1 ──────────────────────────────────
+  // Date d'entrée future ou absente
+  if (!entree || entree > today) return 'Niv 1';
+  // Suivi SIA
+  if (suivi === 'SIA') return 'Niv 1';
+  // Suivi SIR (présent dans lib_pro_visite)
+  if (libVisite.includes(' sir ') || libVisite.endsWith(' sir') || libVisite.includes('sir ') || libVisite.startsWith('sir')) return 'Niv 1';
+  // Visite à la demande du médecin du travail
+  if (libVisite.includes('demande') && (libVisite.includes('médecin') || libVisite.includes('medecin'))) return 'Niv 1';
+
+  // ── Niv 2 ──────────────────────────────────
+  // Date d'entrée antérieure mais proche (≤ 30 jours)
+  const daysSince = (today - entree) / 86400000;
+  if (daysSince <= 30) return 'Niv 2';
+  // Femme enceinte, pension invalidité, travailleur handicapé
+  if (row['est_enceinte_calc'] === 'Oui') return 'Niv 2';
+  if (row['est_pension_invalidite_calc'] === 'Oui') return 'Niv 2';
+  if (row['est_travailleur_handicape_calc'] === 'Oui') return 'Niv 2';
+  // Ancien suivi SIS passé en SIA (changement de suivi)
+  if (ancienSuivi === 'SIS' && suivi === 'SIA') return 'Niv 2';
+
+  // ── Niv 3 ──────────────────────────────────
+  // Apprentis majeurs (≥ 18 ans)
+  if (row['est_apprenti_cn'] === 'Oui' && age >= 18) return 'Niv 3';
+
+  // ── Niv 4 ──────────────────────────────────
+  // Suivi SIS
+  if (suivi === 'SIS') return 'Niv 4';
+
+  // ── Niv 5 ──────────────────────────────────
+  // Mi-carrière
+  if (row['mi_carriere_calc'] === 'Oui') return 'Niv 5';
+
+  // ── Niv 6 ──────────────────────────────────
+  // Visite périodique dans les 3 mois
+  if (prochaineVisite) {
+    const daysUntil = (prochaineVisite - today) / 86400000;
+    if (daysUntil >= 0 && daysUntil <= 90) return 'Niv 6';
+  }
+
+  return '—';
 }
 
 // ══════════════════════════════════════════════
