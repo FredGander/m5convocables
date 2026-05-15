@@ -446,30 +446,22 @@
   }
 
   /* ── Tooltip ── */
-  .has-tooltip { position: relative; cursor: help; }
-  .has-tooltip .tooltip {
-    display: none;
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
+  #tooltip {
+    position: fixed;
     background: #0f1117;
     border: 1px solid var(--border-light);
     border-radius: 6px;
-    padding: 8px 10px;
-    font-size: 11px;
-    line-height: 1.5;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.6;
     color: var(--text-dim);
-    white-space: nowrap;
-    z-index: 100;
+    z-index: 9999;
     pointer-events: none;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-    max-width: 320px;
-    white-space: normal;
-    width: max-content;
-    max-width: 280px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    max-width: 300px;
+    display: none;
   }
-  .has-tooltip:hover .tooltip { display: block; }
+  #tooltip strong { color: var(--text); display: block; margin-bottom: 2px; }
 
   .badge-p1 { background: rgba(240,84,84,0.18); color: #f05454; border: 1px solid rgba(240,84,84,0.3); }
   .badge-p2 { background: rgba(245,166,35,0.18); color: #f5a623; border: 1px solid rgba(245,166,35,0.3); }
@@ -517,6 +509,8 @@
 </style>
 </head>
 <body>
+
+<div id="tooltip"></div>
 
 <!-- Top bar -->
 <div class="topbar">
@@ -676,10 +670,13 @@ Papa.parse(DATA_URL, {
     columns = res.meta.fields;
     const DEFAULT_COLS = new Set(['ordre','priorite','nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
 
-    // Compute priority and sort date for each row
+    // Compute priority, reason and sort date for each row
     allRows.forEach(r => {
-      r['priorite'] = computePriority(r);
+      const result = computePriority(r);
+      r['priorite'] = result.level;
+      r['_reason'] = result.reason;
       r['_sortDate'] = getSortDate(r);
+      r['_sortDateLabel'] = getSortDateLabel(r);
     });
 
     columns = [...res.meta.fields, 'priorite', 'ordre'];
@@ -1001,7 +998,7 @@ function renderPage() {
       cell.className = 'cell';
       cell.style.cssText = style;
       const val = row[col] || '';
-      cell.innerHTML = formatCell(col, val);
+      cell.innerHTML = formatCell(col, val, row);
       cell.title = val;
       rowEl.appendChild(cell);
     }
@@ -1072,7 +1069,7 @@ function getPageNumbers(cur, total) {
   return pages;
 }
 
-function formatCell(col, val) {
+function formatCell(col, val, row = {}) {
   if (!val || val === '') return `<span style="color:var(--text-muted)">—</span>`;
 
   if (col === 'ordre') {
@@ -1082,16 +1079,20 @@ function formatCell(col, val) {
   if (col === 'priorite') {
     const map = { 'Niv 1': 'p1', 'Niv 2': 'p2', 'Niv 3': 'p3', 'Niv 4': 'p4', 'Niv 5': 'p5', 'Niv 6': 'p6' };
     const cls = map[val];
-    const tooltips = {
-      'Niv 1': 'Date d\'entrée future ou absente · Suivi SIA · Visite SIR · Demande du médecin du travail',
-      'Niv 2': 'Entrée récente (≤ 30 j) · Femme enceinte · Pension invalidité · Trav. handicapé · Ancien SIS passé en SIA',
-      'Niv 3': 'Apprenti(e) majeur(e) (≥ 18 ans)',
-      'Niv 4': 'Suivi SIS avec prochaine visite dans les 3 mois',
-      'Niv 5': 'Visite de mi-carrière',
-      'Niv 6': 'Visite périodique dans les 3 mois',
+    const rules = {
+      'Niv 1': 'Date d\'entrée future/absente · SIA · SIR · Demande médecin',
+      'Niv 2': 'Entrée récente (≤30j) · Enceinte · Pension inv. · Handicap · SIS→SIA',
+      'Niv 3': 'Apprenti(e) majeur(e) (≥18 ans)',
+      'Niv 4': 'Suivi SIS — visite dans les 3 mois',
+      'Niv 5': 'Mi-carrière',
+      'Niv 6': 'Visite périodique à 3 mois',
     };
+    const reason   = escHtml(row['_reason'] || '');
+    const dateInfo = escHtml(row['_sortDateLabel'] || '');
+    const tipTitle = escHtml(val);
+    const tipBody  = escHtml(rules[val] || '') + (reason ? `&#10;&#10;▸ ${reason}` : '') + (dateInfo ? `&#10;▸ Classé par : ${dateInfo}` : '');
     return cls
-      ? `<span class="has-tooltip"><span class="badge badge-${cls}" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600">${val}</span><div class="tooltip">${tooltips[val] || ''}</div></span>`
+      ? `<span class="badge badge-${cls}" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600;cursor:help" data-tip-title="${tipTitle}" data-tip-rule="${escHtml(rules[val]||'')}" data-tip-reason="${reason}" data-tip-date="${dateInfo}">${val}</span>`
       : `<span style="color:var(--text-muted)">—</span>`;
   }
   if (BOOL_COLS.has(col)) {
@@ -1139,13 +1140,26 @@ function getSortDate(row) {
   const entree = parseDate(row['dt_entree_sa']);
   const visite = parseDate(row['dt_pro_visite_sa']);
   const niv = row['priorite'];
-  // Niv 1 avec entrée future/absente → trier par date d'entrée
   if (niv === 'Niv 1' && (!entree || entree > new Date())) return entree;
-  // Autres cas → trier par prochaine visite
   return visite;
 }
 
+function getSortDateLabel(row) {
+  const niv = row['priorite'];
+  const entree = row['dt_entree_sa'] || '';
+  const visite = row['dt_pro_visite_sa'] || '';
+  if (niv === 'Niv 1' && (!entree || entree === '')) return entree ? `Date d'entrée : ${entree}` : 'Date d\'entrée absente';
+  if (niv === 'Niv 1') {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const parts = entree.split('/');
+    const d = parts.length === 3 ? new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0])) : null;
+    if (d && d > today) return `Date d'entrée : ${entree}`;
+  }
+  return visite ? `Prochaine visite : ${visite}` : 'Pas de date de visite';
+}
 
+// ══════════════════════════════════════════════
+// Priority computation
 // ══════════════════════════════════════════════
 function computePriority(row) {
   const today = new Date();
@@ -1161,58 +1175,51 @@ function computePriority(row) {
   }
 
   function isTrue(val) { return val === true || val === 'true' || val === 'Oui'; }
+  function niv(level, reason) { return { level, reason }; }
 
-  const entree         = parseDate(row['dt_entree_sa']);
+  const entree          = parseDate(row['dt_entree_sa']);
   const prochaineVisite = parseDate(row['dt_pro_visite_sa']);
-  const suivi          = (row['suivi_calc'] || '').trim();
-  const ancienSuivi    = (row['ancien_suivi_calc'] || '').trim();
-  const libVisite      = (row['lib_pro_visite'] || '').toLowerCase();
-  const age            = parseFloat(row['age_calc']) || 0;
+  const suivi           = (row['suivi_calc'] || '').trim();
+  const ancienSuivi     = (row['ancien_suivi_calc'] || '').trim();
+  const libVisite       = (row['lib_pro_visite'] || '').toLowerCase();
+  const libVisiteRaw    = (row['lib_pro_visite'] || '');
+  const age             = parseFloat(row['age_calc']) || 0;
 
   // ── Niv 1 ──────────────────────────────────
-  // Date d'entrée future ou absente
-  if (!entree || entree > today) return 'Niv 1';
-  // Suivi SIA
-  if (suivi === 'SIA') return 'Niv 1';
-  // Suivi SIR (présent dans lib_pro_visite)
-  if (libVisite.includes('sir')) return 'Niv 1';
-  // Visite à la demande du médecin du travail
-  if (libVisite.includes('demande') && (libVisite.includes('médecin') || libVisite.includes('medecin'))) return 'Niv 1';
+  if (!entree)           return niv('Niv 1', 'Date d\'entrée absente (travailleur non encore affecté)');
+  if (entree > today)    return niv('Niv 1', `Date d'entrée future : ${row['dt_entree_sa']}`);
+  if (suivi === 'SIA')   return niv('Niv 1', 'Suivi SIA (Suivi Individuel Adapté)');
+  if (libVisite.includes('sir')) return niv('Niv 1', `Visite SIR : ${libVisiteRaw}`);
+  if (libVisite.includes('demande') && (libVisite.includes('médecin') || libVisite.includes('medecin')))
+    return niv('Niv 1', `Visite à la demande du médecin du travail : ${libVisiteRaw}`);
 
   // ── Niv 2 ──────────────────────────────────
-  // Date d'entrée antérieure mais proche (≤ 30 jours)
   const daysSince = (today - entree) / 86400000;
-  if (daysSince <= 30) return 'Niv 2';
-  // Femme enceinte, pension invalidité, travailleur handicapé
-  if (isTrue(row['est_enceinte_calc'])) return 'Niv 2';
-  if (isTrue(row['est_pension_invalidite_calc'])) return 'Niv 2';
-  if (isTrue(row['est_travailleur_handicape_calc'])) return 'Niv 2';
-  // Ancien suivi SIS passé en SIA
-  if (ancienSuivi === 'SIS' && suivi === 'SIA') return 'Niv 2';
+  if (daysSince <= 30)   return niv('Niv 2', `Entrée récente il y a ${Math.round(daysSince)} jour(s) (${row['dt_entree_sa']})`);
+  if (isTrue(row['est_enceinte_calc']))            return niv('Niv 2', 'Femme enceinte');
+  if (isTrue(row['est_pension_invalidite_calc']))  return niv('Niv 2', 'Bénéficiaire d\'une pension d\'invalidité');
+  if (isTrue(row['est_travailleur_handicape_calc'])) return niv('Niv 2', 'Travailleur handicapé (RQTH)');
+  if (ancienSuivi === 'SIS' && suivi === 'SIA')   return niv('Niv 2', 'Ancien suivi SIS passé en SIA');
 
   // ── Niv 3 ──────────────────────────────────
-  // Apprentis majeurs (≥ 18 ans)
-  if (isTrue(row['est_apprenti_cn']) && age >= 18) return 'Niv 3';
+  if (isTrue(row['est_apprenti_cn']) && age >= 18) return niv('Niv 3', `Apprenti(e) majeur(e) (${Math.floor(age)} ans)`);
 
   // ── Niv 4 ──────────────────────────────────
-  // SIS dont la prochaine visite est dans les 3 mois
   if (suivi === 'SIS' && prochaineVisite) {
     const daysUntil = (prochaineVisite - today) / 86400000;
-    if (daysUntil >= 0 && daysUntil <= 90) return 'Niv 4';
+    if (daysUntil >= 0 && daysUntil <= 90) return niv('Niv 4', `Suivi SIS — visite dans ${Math.round(daysUntil)} jour(s) (${row['dt_pro_visite_sa']})`);
   }
 
   // ── Niv 5 ──────────────────────────────────
-  // Mi-carrière
-  if (isTrue(row['mi_carriere_calc'])) return 'Niv 5';
+  if (isTrue(row['mi_carriere_calc'])) return niv('Niv 5', 'Visite de mi-carrière');
 
   // ── Niv 6 ──────────────────────────────────
-  // Visite périodique dans les 3 mois
   if (prochaineVisite) {
     const daysUntil = (prochaineVisite - today) / 86400000;
-    if (daysUntil >= 0 && daysUntil <= 90) return 'Niv 6';
+    if (daysUntil >= 0 && daysUntil <= 90) return niv('Niv 6', `Visite périodique à 3 mois — dans ${Math.round(daysUntil)} jour(s) (${row['dt_pro_visite_sa']})`);
   }
 
-  return '—';
+  return niv('—', 'Aucun critère de priorité');
 }
 
 // ══════════════════════════════════════════════
@@ -1248,6 +1255,47 @@ function startResize(e, col, headerEl) {
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+}
+
+// ══════════════════════════════════════════════
+// Global tooltip
+// ══════════════════════════════════════════════
+const tooltipEl = document.getElementById('tooltip');
+
+document.addEventListener('mouseover', e => {
+  const target = e.target.closest('[data-tip-title]');
+  if (!target) return;
+  const title  = target.dataset.tipTitle  || '';
+  const rule   = target.dataset.tipRule   || '';
+  const reason = target.dataset.tipReason || '';
+  const date   = target.dataset.tipDate   || '';
+  tooltipEl.innerHTML =
+    (title  ? `<strong>${title}</strong>` : '') +
+    (rule   ? `<span style="color:var(--text-muted);font-size:11px">Règle : ${rule}</span><br>` : '') +
+    (reason ? `<span style="color:var(--text);margin-top:4px;display:block">▸ ${reason}</span>` : '') +
+    (date   ? `<span style="color:var(--text-muted);font-size:11px;display:block;margin-top:2px">⏱ ${date}</span>` : '');
+  tooltipEl.style.display = 'block';
+  positionTooltip(e);
+});
+
+document.addEventListener('mousemove', e => {
+  if (tooltipEl.style.display === 'block') positionTooltip(e);
+});
+
+document.addEventListener('mouseout', e => {
+  if (e.target.closest('[data-tip-title]')) tooltipEl.style.display = 'none';
+});
+
+function positionTooltip(e) {
+  const pad = 12;
+  const tw = tooltipEl.offsetWidth;
+  const th = tooltipEl.offsetHeight;
+  let x = e.clientX + pad;
+  let y = e.clientY - th - pad;
+  if (x + tw > window.innerWidth) x = e.clientX - tw - pad;
+  if (y < 0) y = e.clientY + pad;
+  tooltipEl.style.left = x + 'px';
+  tooltipEl.style.top = y + 'px';
 }
 
 // ══════════════════════════════════════════════
