@@ -681,7 +681,7 @@ function getColStyle(col, cols) {
     : `min-width:${w}px;width:${w}px;flex-shrink:0;`;
 }
 
-
+function visibleColumns() {
   return columns.filter(c => visibleCols[c]);
 }
 
