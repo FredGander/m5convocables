@@ -621,7 +621,8 @@ Papa.parse(DATA_URL, {
   complete(res) {
     allRows = res.data;
     columns = res.meta.fields;
-    visibleCols = Object.fromEntries(columns.map(c => [c, true]));
+    const DEFAULT_COLS = new Set(['nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
+    visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
     colFilters = Object.fromEntries(columns.map(c => [c, '']));
 
     document.getElementById('loader').style.display = 'none';
@@ -853,7 +854,8 @@ function resetFilters() {
 
 function resetAll() {
   columns = Object.keys(COL_LABELS).filter(c => allRows[0] && c in allRows[0]);
-  visibleCols = Object.fromEntries(columns.map(c => [c, true]));
+  const DEFAULT_COLS = new Set(['nom_naissance_pa','prenom_pa','nom_ad','age_calc','dt_entree_sa','dt_pro_visite_sa','lib_pro_visite','suivi_calc']);
+  visibleCols = Object.fromEntries(columns.map(c => [c, DEFAULT_COLS.has(c)]));
   colFilters = Object.fromEntries(columns.map(c => [c, '']));
   globalFilter = '';
   sortCol = null;
